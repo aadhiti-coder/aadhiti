@@ -40,6 +40,9 @@ test('WhatsApp preferences, guided journeys, checklists, feedback and human acce
  await msg('',{type:'voice'});assert.ok(!sent.some(x=>typeof x==='string'&&x.includes('मला शिवणकाम शिकायचे आहे')));
  await msg('English');
  await msg('Talk to someone');await msg('1');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('No person has accepted')));
+ assert.ok(sent.some(x=>typeof x==='string'&&x.includes('Send your current location')&&x.includes('optional')));
+ await msg('',{type:'location'});assert.ok(sent.some(x=>typeof x==='string'&&x.includes('Staff still need to confirm')));
+ await msg('location');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('Send your current location')));
  await msg('#accept',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'unknown@example.test'});assert.equal(sent.length,0);
  await msg('#on-the-way',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'support@example.test'});assert.equal(sent.length,0);
  await msg('#accept',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'support@example.test'});assert.ok(sent.some(x=>typeof x==='string'&&x.includes('has accepted')));

@@ -52,6 +52,7 @@ import {
   calmMessage,
   handoffDeclinedMessage,
   handoffDoneMessage,
+  shareLocationMessage,
   handoffResumedMessage,
   handoffUnavailableMessage,
   spokenText,
@@ -280,6 +281,19 @@ async function handle(msg: WatiMessage) {
     if (audio) await sendFile(target, audio, "aadhi-ti-welcome.mp3", "audio/mpeg").catch(() => false);
   };
 
+  // Native location stays in the WATI conversation for staff; never send coordinates to AI.
+  if (msg.type === "location") {
+    const active = Boolean(state.handoffStatus && (state.humanUntil ?? 0) > Date.now());
+    await sendText(target, active ? say(uiLang,
+      "Your location message was received in this chat. Staff still need to confirm they have reviewed it and arrange any visit with you. If you are in immediate danger, call 112 without waiting.",
+      "या चॅटमध्ये तुमचा स्थानाचा संदेश मिळाला आहे. सहाय्यकाने तो पाहिल्याची पुष्टी करून तुमच्याशी भेट ठरवणे आवश्यक आहे. तातडीचा धोका असल्यास वाट न पाहता 112 वर कॉल करा.",
+      "इस चैट में आपका स्थान वाला संदेश मिला है। सहायक को इसे देखने की पुष्टि करके आपसे मुलाकात तय करनी होगी। तत्काल खतरे में इंतज़ार किए बिना 112 पर कॉल करें।") : say(uiLang,
+      "Your location message was received, but there is no active staff handoff. Type Talk to someone to request support. Sharing a location does not dispatch help. For immediate danger, call 112.",
+      "तुमचा स्थानाचा संदेश मिळाला, पण सहाय्यकाकडे सक्रिय विनंती नाही. मदतीची विनंती करण्यासाठी Talk to someone लिहा. स्थान पाठवल्याने मदत पथक पाठवले जात नाही. तातडीच्या धोक्यात 112 वर कॉल करा.",
+      "आपका स्थान वाला संदेश मिला, लेकिन सहायता टीम को कोई सक्रिय अनुरोध नहीं है। सहायता माँगने के लिए Talk to someone लिखें। स्थान भेजने से सहायता दल रवाना नहीं होता। तत्काल खतरे में 112 पर कॉल करें।"));
+    return;
+  }
+
   // ---- what did she say? (typed, tapped, or a voice note) ----
   const isVoice = msg.type === "voice" || msg.type === "audio";
   let text: string;
@@ -362,6 +376,10 @@ async function handle(msg: WatiMessage) {
 
   // 2. A person from the team is handling this chat: stay quiet unless she asks for the bot again.
   if (state.humanUntil && state.humanUntil > Date.now()) {
+    if (/^(location|share location|send location|लोकेशन|स्थान|माझे स्थान|मेरा स्थान)[.!?]*$/i.test(text)) {
+      await sendText(target, shareLocationMessage(uiLang));
+      return;
+    }
     if (MENU_WORDS.test(text)) {
       await sendText(target, handoffResumedMessage(uiLang));
       await save({ humanUntil: 0, handoffStatus: undefined });
@@ -477,7 +495,7 @@ async function handle(msg: WatiMessage) {
       const done = await handToHuman(target, waId);
       await sendText(
         target,
-        done ? handoffDoneMessage(lang) : handoffUnavailableMessage(lang),
+        done ? `${handoffDoneMessage(lang)}\n\n${shareLocationMessage(lang)}` : handoffUnavailableMessage(lang),
       );
       return save({
         offered: null,

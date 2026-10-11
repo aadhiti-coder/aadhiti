@@ -146,6 +146,13 @@ export function slowDownMessage(lang: Lang): string {
 
 // ---------- talk to a person ----------
 
+export function shareLocationMessage(lang: Lang): string {
+ return t3(lang,
+  "तुम्हाला सोयीचं आणि सुरक्षित वाटत असल्यास, सहाय्यकाला जागा शोधण्यासाठी WhatsApp मधील + किंवा अटॅचमेंट → Location → Send your current location वापरा. जवळची खूणही पाठवू शकता. हे ऐच्छिक आहे; तुमचं स्थान या चॅटमधील सहाय्यक टीमला दिसेल. स्थान पाठवल्याने भेट निश्चित होत नाही; सहाय्यकाची पुष्टी आवश्यक आहे.",
+  "अगर आपको सुरक्षित और सुविधाजनक लगे, तो सहायक को जगह ढूँढने में मदद के लिए WhatsApp में + या अटैचमेंट → Location → Send your current location चुनें। पास की पहचान भी भेज सकती हैं। यह वैकल्पिक है; आपका स्थान इस चैट की सहायता टीम को दिखाई देगा। स्थान भेजने से मुलाकात तय नहीं होती; सहायक की पुष्टि ज़रूरी है।",
+  "If it feels safe and comfortable, help staff find you by using WhatsApp + or attachment → Location → Send your current location. You may also send a nearby landmark. This is optional; the support team in this chat can see your location. Sharing it does not confirm a visit; your support person must confirm that separately.");
+}
+
 export function handoffDoneMessage(lang: Lang): string {
  return t3(lang,"विनंती सहाय्यक टीमकडे पाठवली आहे. अजून कोणत्याही व्यक्तीने स्वीकारलेली नाही. बॉट थांबेल; परत येण्यासाठी menu लिहा. तातडीचा धोका असल्यास 112.","अनुरोध सहायता टीम को भेजा है। अभी किसी व्यक्ति ने स्वीकार नहीं किया है। बॉट रुकेगा; लौटने के लिए menu लिखें। तत्काल खतरे में 112।","Your request was routed to the support team. No person has accepted it yet. The bot will pause; type menu to return. For immediate danger call 112.");
 }
