@@ -53,7 +53,6 @@ export function aiMessage(a: AiAnswer): string {
     a.risk === "P0"
       ? `*${t3(lang, "आत्ता धोका असेल तर लगेच 112 वर कॉल करा.", "अभी खतरा हो तो तुरंत 112 पर कॉल करें।", "If you are in danger now, call 112 immediately.")}*`
       : "",
-    `*${a.understand}*`,
     a.safetyCheck
       ? `*${t3(lang, "सुरक्षा प्रश्न", "सुरक्षा सवाल", "Safety check")}:* ${a.safetyCheck}`
       : "",

@@ -1,3 +1,4 @@
+import { aboutIntent, aboutAnswer } from "@/lib/about";
 // WhatsApp via WATI: receives "Message Received" webhooks and replies with AADHI TI's answers.
 // Set this URL in WATI → Webhooks (event: Message Received):
 //   https://<your-domain>/api/wati/webhook?token=<WATI_WEBHOOK_SECRET>
@@ -47,15 +48,12 @@ import {
   type Offered,
 } from "@/lib/server/waMenu";
 import {
-  aboutCaption,
-  aboutMessage,
   aiMessage,
   calmMessage,
   handoffDeclinedMessage,
   handoffDoneMessage,
   handoffResumedMessage,
   handoffUnavailableMessage,
-  heardLine,
   spokenText,
   voiceUnclearMessage,
   scriptMessage,
@@ -91,7 +89,7 @@ type UserState = {
   mode?: ReplyMode;
   lastTopic?: string;
   feedbackPending?: boolean;
-  handoffStatus?: "pending" | "accepted";
+  handoffStatus?: "pending" | "accepted" | "on-the-way";
   lang: Lang | null;
   history: ChatTurn[];
   offered?: Offered | null;
@@ -158,11 +156,21 @@ export async function POST(req: Request) {
   }
 
   // Explicit staff acceptance, never inferred from assignment or a bot message.
-  if (msg.eventType === "sessionMessageSent_v2" && msg.owner === true && msg.waId && msg.text?.trim() === "#accept") {
+  if (msg.eventType === "sessionMessageSent_v2" && msg.owner === true && msg.waId && ["#accept", "#on-the-way"].includes(msg.text?.trim() ?? "")) {
     const staff=(process.env.WATI_SUPPORT_OPERATOR_EMAILS??"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
     if(staff.includes((msg.operatorEmail??"").toLowerCase())) after(()=>withLock(`wati:user:${userKey(msg.waId!)}`,async()=>{
       const key=`wati:user:${userKey(msg.waId!)}`;
       const state=await getJSON<UserState>(key);
+      if (msg.text?.trim() === "#on-the-way") {
+        // Only a human operator can confirm physical assistance, after accepting this request.
+        if (state?.handoffStatus !== "accepted" || (state.humanUntil ?? 0) <= Date.now()) return;
+        await setJSON(key, {...state, handoffStatus: "on-the-way", humanUntil: Date.now()+DAY*1000}, DAY);
+        await sendText(msg.conversationId || msg.waId!, say(state.lang ?? "mr",
+          "Your support person has confirmed that staff are on the way to help you. Stay in touch with them here for arrival details. If you are in immediate danger, call 112 now; do not wait for their arrival.",
+          "तुमच्या सहाय्यकाने कर्मचारी तुमच्या मदतीसाठी येत असल्याची पुष्टी केली आहे. ते कधी पोहोचतील यासाठी त्यांच्याशी इथे संपर्कात राहा. तातडीचा धोका असल्यास त्यांच्या येण्याची वाट न पाहता आत्ताच 112 वर कॉल करा.",
+          "आपके सहायक ने पुष्टि की है कि कर्मचारी आपकी मदद के लिए आ रहे हैं। उनके पहुँचने की जानकारी के लिए यहाँ संपर्क में रहें। तत्काल खतरे में उनके आने का इंतज़ार न करें; अभी 112 पर कॉल करें।"));
+        return;
+      }
       if(state?.handoffStatus!=="pending")return;
       await setJSON(key,{...state,handoffStatus:"accepted",humanUntil:Date.now()+DAY*1000},DAY);
       const l=state.lang??"mr";
@@ -206,9 +214,6 @@ const PERSON_WORDS =
   /(talk to (a )?(person|human|someone|counsell?or)|real person|counsell?or|व्यक्तीशी बोल|माणसाशी बोल|कोणाशी तरी बोल|समुपदेशक|किसी (व्यक्ति|इंसान|से) (से )?बात|इंसान से बात|काउंसलर)/i;
 
 // "about", her name, or "who made this app" → her photo, credit and initiatives.
-const ABOUT_WORDS =
-  /^(about|about (aadhi|aadhi ti|this app|the app|app))[\s!.?]*$|aditi|आदिती|अदिति|अदिती|तटकरे|tatkare|who (made|started|built|runs) (this|the|aadhi)|(कोणी|कोणाचा|कुणी) (बनवलं|सुरू केलं|उपक्रम)|किसने (बनाया|शुरू किया)|किसकी पहल/i;
-
 const HANDOFF_HOURS = 24;
 
 const norm = (s: string) =>
@@ -246,7 +251,7 @@ async function handle(msg: WatiMessage) {
   const prefs = await getJSON<{mode:ReplyMode;lang:Lang}>(`wati:preferences:${key}`);
   state.mode = prefs?.mode ?? state.mode;
   state.lang = state.lang ?? prefs?.lang ?? null;
-  const uiLang: Lang = state.lang ?? "mr";
+  let uiLang: Lang = state.lang ?? "mr";
   const save = (patch: Partial<UserState>) => {
     Object.assign(state, patch);
     return setJSON(`wati:user:${key}`, state, DAY).catch(() => {});
@@ -303,12 +308,15 @@ async function handle(msg: WatiMessage) {
     return;
   }
 
-  // Replies to a voice note start with what we heard, and are also sent back as a voice note.
+  uiLang = conversationLang(text, uiLang, state.history);
+  if (state.lang && state.lang !== uiLang) await save({lang: uiLang});
+
+  // Reply directly, without echoing the voice-note transcript.
   const reply = async (body: string, speak: string[], lang: Lang) => {
     const mode = state.mode ?? (isVoice ? "both" : "text");
     if(mode !== "audio") await sendText(
       target,
-      isVoice ? `${heardLine(lang, text)}\n\n${body}` : body,
+      body,
     );
     if (mode !== "text") {
       const audio = await synthesize(spokenText(speak), lang, "female").catch(()=>null);
@@ -375,7 +383,8 @@ async function handle(msg: WatiMessage) {
   if (HELPLINE_WORDS.test(text)) return handleChoice("helplines");
   if (FINDER_WORDS.test(text)) return handleChoice("finder");
   if (PERSON_WORDS.test(text)) return handleChoice("person");
-  if (ABOUT_WORDS.test(text)) return handleChoice("about");
+  const identity = aboutIntent(text);
+  if (identity) return handleChoice(identity === "person" ? "about-person" : "about");
 
   // 5. Greetings: new women choose a language first; others get the welcome and the menu.
   const local = understand(text, null);
@@ -399,7 +408,7 @@ async function handle(msg: WatiMessage) {
   if (ai) {
     lang = ai.lang;
     body = aiMessage(ai);
-    speak = [ai.understand, ...ai.answer, ai.nextStep];
+    speak = [...ai.answer, ai.nextStep];
     summary = speak.join(" ");
   } else if (local.kind === "topic") {
     await recordMetric("unanswered",local.topic.id,"ai-unavailable");
@@ -446,18 +455,10 @@ async function handle(msg: WatiMessage) {
     }
     if (id === "schemes") return offer(schemesMenu(lang), lang);
 
-    // About the initiative: her photo with the "An initiative by" caption, then her profile.
-    if (id === "about") {
-      await sendFileUrl(
-        target,
-        `${SITE_URL}/brand/aditi-tatkare.jpg`,
-        aboutCaption(lang),
-      );
-      await sendText(
-        target,
-        `${aboutMessage(lang, SITE_URL)}\n\n${menuHint(lang)}`,
-      );
-      return save({ offered: null });
+    if (id === "about" || id === "about-person") {
+      const answer = aboutAnswer(id === "about-person" ? "person" : "service", lang);
+      await reply(aiMessage(answer), answer.answer, lang);
+      return save({ lang, offered: null, history: remember(state.history, text, answer.answer.join(" ")) });
     }
 
     // Talk to a person: consent first.
@@ -549,5 +550,5 @@ function remember(
     ...history,
     { role: "user" as const, text: user },
     { role: "assistant" as const, text: assistant.slice(0, 600) },
-  ].slice(-6);
+  ].slice(-12);
 }

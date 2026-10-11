@@ -16,6 +16,7 @@ import {
   Waves,
   type LucideIcon,
 } from "lucide-react";
+import LocalHelp from "@/components/LocalHelp";
 import Leaf from "@/components/Leaf";
 import { ShoreMap } from "@/components/PageArt";
 import { useLang } from "@/lib/i18n";
@@ -418,6 +419,7 @@ export default function SafeShrivardhan() {
           )}
         </div>
       </div>
+      <LocalHelp />
     </div>
   );
 }

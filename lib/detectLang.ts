@@ -2,14 +2,14 @@ import type { Lang } from "./kb/types";
 
 const ROMAN_INDIAN =
   /\b(aahe|ahe|mala|maza|mazi|majh\w*|kay|nahi|nahin|mujhe|mera|meri|hai|hain|kya|kaise|kaisa|karu|karaycha|karaychi|kara|karna|pahije|chahiye|kuthe|kuthun|kahan|kidhar|aap|tumhi|konti|kaun|paise|milel|milega|milegi|sathi|tyasathi|liye|kasa|kashi|kase|ka|ki|ke|ko|se|mein|madhe|hota|hoti|zala|zali|hoil|bhi|pan|ani|aur)\b/gi;
-const ROMAN_HINDI = /\b(mujhe|mera|meri|hai|hain|kya|kaise|kaisa|chahiye|kahan|kidhar|kaun|milega|milegi|liye|mein|bhi|aur|nahin)\b/gi;
+const ROMAN_HINDI = /\b(mujhe|mera|meri|hai|hain|kya|kaise|kaisa|chahiye|kahan|kidhar|kaun|milega|milegi|liye|mein|bhi|aur|nahin|batao|bataiye|aap|mujhko)\b/gi;
 const ROMAN_MARATHI = /\b(aahe|ahe|mala|maza|mazi|majh\w*|kay|karu|karaycha|karaychi|pahije|kuthe|kuthun|tumhi|konti|milel|sathi|tyasathi|kasa|kashi|kase|madhe|zala|zali|hoil|ani)\b/gi;
 const ENGLISH = /\b(the|is|are|am|what|how|where|when|why|can|could|should|my|me|i|to|for|of|and|with|do|does|get|want|need|help|please)\b/gi;
 
-/** Answer in the language she wrote in; romanised Marathi/Hindi follows her chosen app language. */
+/** Detect explicit language cues, including romanised Marathi and Hindi. */
 export function detectLang(q: string, uiLang: Lang): Lang {
   if (/[ऀ-ॿ]/.test(q)) {
-    if (/ळ|ॲ|तुम्हाला|कागदपत्र|सांगू|आहे|मला|माझ|तुम्ही|तुमच|काय|नाही|करू|झालं|झाली|होतं|पाहिजे|कसं|कसा|कशी|आम्ही|आपल्या|केलं|कोणी|कुठे|मिळेल|सांगा|हवं|नको|त्यांच|आमच|करायच|कधी|येतंय|चालेल/.test(q)) return "mr";
+    if (/ळ|ॲ|तुम्हाला|कागदपत्र|सांगू|आहे|मला|माझ|तुम्ही|तुमच|काय|नाही|करू(?![ँं])|झालं|झाली|होतं|पाहिजे|कसं|कसा|कशी|आम्ही|आपल्या|केलं|कोणी|कुठे|मिळेल|सांगा|हवं|नको|त्यांच|आमच|करायच|कधी|येतंय|चालेल/.test(q)) return "mr";
     if (/है|हैं|हूँ|हूं|में|क्या|मुझे|मेरा|मेरी|नहीं|कैसे|कहाँ|कहां|रहा|रही|चाहिए|करें|मिलेगा|मिलेगी|यह|वह|किस|था|थी|गया|गई|बनाया|करना|होगा|सकती|सकता/.test(q)) return "hi";
     // No clear markers (e.g. a single word like "नमस्कार"): keep her chosen language.
     return uiLang === "en" ? "hi" : uiLang;

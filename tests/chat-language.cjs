@@ -17,3 +17,16 @@ test('short replies preserve the preceding answer language',()=>{
  assert.equal(conversationLang('16','en',[{role:'assistant',text:'आपकी उम्र क्या है?'}]),'hi');
  assert.equal(conversationLang('Reply in English','mr',[{role:'assistant',text:'काय पाहिजे?'}]),'en');
 });
+
+test('switch language with each clear new reply',()=>{
+ const h=[{role:'assistant',text:'तुम्हाला काय पाहिजे?'}];
+ assert.equal(conversationLang('मुझे योजना की जानकारी चाहिए','mr',h),'hi');
+ assert.equal(conversationLang('Where can I apply?','hi',h),'en');
+ assert.equal(conversationLang('मला अर्ज कुठे मिळेल','en',h),'mr');
+ assert.equal(conversationLang('aap batao','en',[]),'hi');
+});
+
+test('Hindi nasal verb is not mistaken for Marathi; scheme names do not override English',()=>{
+ assert.equal(detectLang('मुझे सिलाई आती है। घर से कमाई कैसे शुरू करूँ?','hi'),'hi');
+ assert.equal(conversationLang('documents?','en',[{role:'assistant',text:'You can apply for Mukhyamantri Majhi Ladki Bahin Yojana. Would you like to learn more?'}]),'en');
+});

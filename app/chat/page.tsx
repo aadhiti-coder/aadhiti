@@ -40,7 +40,7 @@ import CategoryIcon from "@/components/CategoryIcon";
 import SOSButton from "@/components/SOSButton";
 import type { AiAnswer, ChatTurn } from "@/lib/ai";
 import { SAFETY_SCRIPTS, safetyRule } from "@/lib/safetyScripts";
-import { detectLang } from "@/lib/detectLang";
+import { detectLang, conversationLang } from "@/lib/detectLang";
 import Onboarding from "@/components/Onboarding";
 import {
   TALUKAS,
@@ -78,7 +78,7 @@ export default function ChatPage() {
 }
 
 function Chat() {
-  const { t, lang, age } = useLang();
+  const { t, lang, age, setLang } = useLang();
   const router = useRouter();
   const params = useSearchParams();
   // Basic information first (age, taluka, home, how she wants answers). A message about danger never waits for it.
@@ -280,12 +280,15 @@ function Chat() {
         return null;
       })
       .filter((x): x is ChatTurn => !!x)
-      .slice(-6);
+      .slice(-12);
 
   // 1. Fixed safety rules (approved scripts, never AI). 2. AI grounded in reviewed content. 3. Reviewed answer if AI fails.
   const ask = async (raw: string) => {
     const text = raw.trim();
     if (!text || text.length > 800 || typingRef.current) return;
+    const replyLang = conversationLang(text, langRef.current, historyFor(messagesRef.current));
+    langRef.current = replyLang;
+    setLang(replyLang);
     setFailure(false);
     setInput("");
     const local = localReply(text);
@@ -1178,7 +1181,6 @@ function AiCard({
   ].filter((l, i, arr) => arr.findIndex((x) => x.href === l.href) === i);
   const urgent = data.risk === "P0" || data.risk === "P1";
   const spoken = [
-    data.understand,
     data.safetyCheck,
     ...data.answer,
     data.nextStep,
@@ -1211,9 +1213,6 @@ function AiCard({
             engine="ai"
             lang={lang}
           />
-          <p className="font-serif text-[1.2rem] leading-snug text-ink">
-            {data.understand}
-          </p>
           {data.safetyCheck && (
             <SafetyCheck question={data.safetyCheck} lang={lang} />
           )}

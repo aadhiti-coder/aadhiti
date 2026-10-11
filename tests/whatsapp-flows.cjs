@@ -31,9 +31,22 @@ test('WhatsApp preferences, guided journeys, checklists, feedback and human acce
  await msg('menu');await msg('Government schemes');await msg('1');assert.ok(sent[0].kind);
  await msg('menu');await msg('voice settings');await msg('Audio');await msg('',{type:'voice'});assert.equal(audio,2);
  failAudio=true;await msg('Where can I learn tailoring?');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('Try a local')));failAudio=false;
+ await msg('voice settings');await msg('Text');
+ await msg('What is AADHI TI?');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('AI information')));assert.ok(!sent.some(x=>typeof x==='string'&&x.includes('born in')));
+ await msg('Who is Aditi Tatkare?');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('Aditi Varda Sunil Tatkare')));
+ await msg('आधी ती बद्दल माहिती सांगा');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('AI सहाय्यक')));
+ await msg('आधी ती क्या है');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('AI सहायिका')));
+ await msg('What is AADHI TI?');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('AI information')));
+ await msg('',{type:'voice'});assert.ok(!sent.some(x=>typeof x==='string'&&x.includes('मला शिवणकाम शिकायचे आहे')));
+ await msg('English');
  await msg('Talk to someone');await msg('1');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('No person has accepted')));
  await msg('#accept',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'unknown@example.test'});assert.equal(sent.length,0);
+ await msg('#on-the-way',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'support@example.test'});assert.equal(sent.length,0);
  await msg('#accept',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'support@example.test'});assert.ok(sent.some(x=>typeof x==='string'&&x.includes('has accepted')));
+ await msg('#on-the-way',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'unknown@example.test'});assert.equal(sent.length,0);
+ await msg('#on-the-way');assert.equal(sent.length,0);
+ await msg('#on-the-way',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'support@example.test'});assert.ok(sent.some(x=>typeof x==='string'&&x.includes('staff are on the way')&&x.includes('112')));
+ await msg('#on-the-way',{owner:true,eventType:'sessionMessageSent_v2',operatorEmail:'support@example.test'});assert.equal(sent.length,0);
  await msg('STOP');assert.ok(sent.some(x=>typeof x==='string'&&x.includes('cancelled')));
  const exp=load('@/lib/server/waExperience');assert.ok(exp.documentsMessage('ladki-bahin','en').includes('not approval'));
  assert.ok(exp.guidedMenu('cat:safety','en').buttons.every(b=>b.id!=='topic:stalking'));
@@ -60,4 +73,19 @@ test('Operations and scheduler reject missing authentication',async()=>{
  assert.equal((await operations.GET(new Request('https://example.test/api/wati/operations'))).status,401);
  assert.equal((await operations.POST(new Request('https://example.test/api/wati/operations',{method:'POST',body:'{}'}))).status,401);
  assert.equal((await cron.GET(new Request('https://example.test/api/cron/reminders'))).status,401);
+});
+
+
+test('scheme follow-ups retain the named scheme without guessing',()=>{
+ const context=loader()('@/lib/server/followUp').followUpContext;
+ const history=[{role:'user',text:'Tell me about Ladki Bahin'},{role:'assistant',text:'You may need to check your eligibility.'}];
+ assert.match(context('documents?',history),/ladki-bahin/);
+ assert.match(context('कागदपत्रे कोणती?',history),/ladki-bahin/);
+ assert.match(context('दस्तावेज चाहिए',history),/ladki-bahin/);
+ assert.equal(context('I have a headache',history),'');
+ assert.match(context('How to apply for Sukanya?',history),/sukanya/);
+ assert.match(context('documents?',[{role:'user',text:'Compare Sukanya and Ladki Bahin'}]),/Ask which scheme/);
+ assert.equal(context('documents?',[...history,{role:'user',text:'I want to learn tailoring'},{role:'assistant',text:'Which skill would you like to learn?'}]),'');
+ const directory=loader()('@/lib/localHelp').LOCAL_HELP;
+ assert.ok(directory.every(c=>c.url.startsWith('https://')&&c.checked==='2026-10-11'));
 });
