@@ -3,6 +3,7 @@ import { Baloo_2, Mukta, Tiro_Devanagari_Marathi } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
 import Footer from "@/components/Footer";
+import WebAnalytics from "@/components/WebAnalytics";
 import { LangProvider } from "@/lib/i18n";
 import "./globals.css";
 
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Footer />
           <BottomNav />
         </LangProvider>
+        <WebAnalytics />
       </body>
     </html>
   );
