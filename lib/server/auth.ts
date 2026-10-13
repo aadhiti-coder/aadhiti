@@ -25,9 +25,9 @@ async function cooldown(phoneKey:string){
 async function budget(key:string,max:number,seconds:number){
  const {limits}=await collections();const window=Math.floor(Date.now()/(seconds*1000));const doc=await limits.findOneAndUpdate({_id:key+':'+window},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((window+2)*seconds*1000)}},{upsert:true,returnDocument:'after'});return !!doc&&doc.count<=max;
 }
-export async function startOtp(phone:string,ip:string,send:(phone:string,code:string)=>Promise<boolean>){
- const phoneKey=keyed('phone:'+phone),ipKey=keyed('ip:'+ip);
- if(!await budget('ip:'+ipKey,10,3600)||!await budget('phone:'+phoneKey,5,3600)||!await cooldown(phoneKey))return {status:429,error:'LIMIT'};
+export async function startOtp(phone:string,send:(phone:string,code:string)=>Promise<boolean>){
+ const phoneKey=keyed('phone:'+phone);
+ if(!await budget('phone:'+phoneKey,5,3600)||!await cooldown(phoneKey))return {status:429,error:'LIMIT'};
  const {challenges}=await collections();const id=randomBytes(32).toString('hex');const code=String(randomInt(100000,1000000));
  // Only one active code per phone: replacement invalidates a previous code immediately.
  await challenges.updateOne({_id:phoneKey},{$set:{phoneKey,last4:phone.slice(-4),codeHash:keyed(id+':'+code),attempts:0,ready:false,expiresAt:new Date(Date.now()+5*60*1000)}},{upsert:true});
@@ -37,9 +37,8 @@ export async function startOtp(phone:string,ip:string,send:(phone:string,code:st
  (await cookies()).set(CHALLENGE_COOKIE,id+'.'+phoneKey,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:300});
  return {status:200,accepted:true};
 }
-export async function verifyOtp(code:string,ip:string){
+export async function verifyOtp(code:string){
  if(!/^\d{6}$/.test(code))return false;
- if(!await budget('verify:'+keyed(ip),30,3600))return false;
  const raw=(await cookies()).get(CHALLENGE_COOKIE)?.value??'';if(!/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(raw))return false;
  const [id,phoneKey]=raw.split('.');const {challenges,sessions,users}=await collections();
  const attempt=await challenges.findOneAndUpdate({_id:phoneKey,ready:true,expiresAt:{$gt:new Date()},attempts:{$lt:5}},{$inc:{attempts:1}},{returnDocument:'after'});
@@ -59,3 +58,8 @@ export async function verifyOtp(code:string,ip:string){
  jar.set(SESSION_COOKIE,token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:SESSION_SECONDS});jar.delete(CHALLENGE_COOKIE);return true;
 }
 export async function signOut(){const jar=await cookies();const token=jar.get(SESSION_COOKIE)?.value;if(token){const {sessions}=await collections();await sessions.deleteOne({_id:hash(token)});}jar.delete(SESSION_COOKIE);jar.delete(CHALLENGE_COOKIE);}
+
+/** Account-scoped limits, shared across deployments through MongoDB. Never keyed by IP. */
+export async function accountRateLimited(customerId:string,bucket:string,limit:number,seconds:number){
+ return !await budget('account:'+customerId+':'+bucket,limit,seconds);
+}

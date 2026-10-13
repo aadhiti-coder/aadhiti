@@ -7,8 +7,6 @@ import { rateLimited } from "@/lib/server/rateLimit";
 import { AGES, MAX_CHARS, answerQuestion, cleanHistory } from "@/lib/server/answer";
 
 export async function POST(req: Request) {
-  if (rateLimited(req, "chat", 20)) return Response.json({ error: "Too many requests" }, { status: 429 });
-
   let input: { message?: unknown; lang?: unknown; age?: unknown; history?: unknown; profile?: unknown };
   try {
     input = await req.json();
@@ -32,6 +30,7 @@ export async function POST(req: Request) {
       verify: "", lang, topicId: null });
   }
   const denied = await requireAuth(); if (denied) return denied;
+  if (await rateLimited(req, "chat", 20)) return Response.json({ error: "Too many requests" }, { status: 429 });
   if (!process.env.GEMINI_API_KEY) return Response.json({ error: "AI is not configured" }, { status: 503 });
 
   const out = await answerQuestion({ message, uiLang, age, history: cleanHistory(input.history), profile: input.profile });

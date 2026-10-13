@@ -9,7 +9,7 @@ import type { AgeGroup, Lang } from '@/lib/kb';
 export const maxDuration = 60;
 export async function POST(req: Request) {
   const denied = await requireAuth(); if (denied) return denied;
-  if (rateLimited(req, 'call', 20)) return Response.json({error:'rate'}, {status:429});
+  if (await rateLimited(req, 'call', 20)) return Response.json({error:'rate'}, {status:429});
   if (!process.env.GEMINI_API_KEY) return Response.json({error:'unavailable'}, {status:503});
   if (Number(req.headers.get('content-length')) > 4_000_000) return Response.json({error:'size'}, {status:413});
   try {

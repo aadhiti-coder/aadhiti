@@ -1,26 +1,14 @@
-// Tiny in-memory, per-IP rate limiter for the API routes (protects the paid API keys).
-// Resets when the server restarts — fine for a single-instance demo.
+import { currentSession, accountRateLimited } from './auth';
 
-const hits = new Map<string, number[]>();
-
-export function rateLimited(
-  req: Request,
+/** Limits belong to the verified account, so shared Wi-Fi does not share a quota. */
+export async function rateLimited(
+  _req: Request,
   bucket: string,
   limit: number,
   windowMs = 60_000,
-): boolean {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-    req.headers.get("x-real-ip") ||
-    "local";
-  const key = `${bucket}:${ip}`;
-  const now = Date.now();
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-  if (recent.length >= limit) {
-    hits.set(key, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(key, recent);
-  return false;
+): Promise<boolean> {
+  const session = await currentSession();
+  // Authentication is enforced by the route; public safety replies need no quota.
+  if (!session) return false;
+  return accountRateLimited(session.customerId, bucket, limit, Math.ceil(windowMs / 1000));
 }

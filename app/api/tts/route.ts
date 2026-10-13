@@ -9,7 +9,7 @@ const LANGS = new Set(["mr", "hi", "en"]);
 export async function POST(req: Request) {
   const denied = await requireAuth(); if (denied) return denied;
   if (!ttsConfigured()) return Response.json({ error: "Voice is not configured" }, { status: 503 });
-  if (rateLimited(req, "tts", 40)) return Response.json({ error: "Too many requests" }, { status: 429 });
+  if (await rateLimited(req, "tts", 40)) return Response.json({ error: "Too many requests" }, { status: 429 });
 
   let body: { text?: unknown; lang?: unknown; voice?: unknown };
   try {

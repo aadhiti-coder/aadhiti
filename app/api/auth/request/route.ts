@@ -5,6 +5,6 @@ export async function POST(req:Request){
  if(!authConfigured())return Response.json({error:'SETUP_REQUIRED'},{status:503});
  try{const raw=await req.text();if(raw.length>300)return Response.json({error:'PHONE'},{status:400});const input=JSON.parse(raw);if(input.consent!==true)return Response.json({error:'CONSENT'},{status:400});
  let phone;try{phone=normalizePhone(input.phone);}catch{return Response.json({error:'PHONE'},{status:400});}
- const result=await startOtp(phone,req.headers.get('x-forwarded-for')?.split(',')[0].trim()||'unknown',sendOtp);return Response.json(result,{status:result.status,headers:{'Cache-Control':'no-store'}});
+ const result=await startOtp(phone,sendOtp);return Response.json(result,{status:result.status,headers:{'Cache-Control':'no-store'}});
  }catch{return Response.json({error:'UNAVAILABLE'},{status:503});}
 }

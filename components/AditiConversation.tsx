@@ -1,4 +1,5 @@
 'use client';
+import { callErrorMessage } from '@/lib/callErrors';
 import { leaderNames } from '@/lib/leader';
 import { useEffect, useRef, useState } from 'react';
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
@@ -9,18 +10,22 @@ function CallAditi(){
  const {t,lang}=useLang();const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const [seconds,setSeconds]=useState(0);
  const pending=useRef(false),mounted=useRef(true);
- const conversation=useConversation({onError:()=>setError(t({en:'The call could not connect. Please try again.',mr:'कॉल जोडता आला नाही. पुन्हा प्रयत्न करा.',hi:'कॉल नहीं जुड़ सका। फिर कोशिश करें।'}))});
+ const conversation=useConversation({onError:(message)=>{if(mounted.current)setError(t(callErrorMessage(message)));}});
  const end=useRef(conversation.endSession);end.current=conversation.endSession;
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;void end.current();};},[]);
  async function start(){if(pending.current)return;pending.current=true;setBusy(true);setError('');try{
+ if(!navigator.mediaDevices?.getUserMedia)throw Error('UNSUPPORTED');
  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});stream.getTracks().forEach(track=>track.stop());
  if(!mounted.current)return;
- const response=await fetch('/api/conversation',{method:'POST'});
- if(response.status===401){window.dispatchEvent(new Event('aadhi-auth-required'));return;}
- if(!response.ok)throw Error();const data=await response.json();if(!mounted.current)return;
+ const response=await fetch('/api/conversation',{method:'POST',signal:AbortSignal.timeout(20000)});
+ if(response.status===401){window.dispatchEvent(new Event('aadhi-auth-required'));throw Error('AUTH_REQUIRED');}
+ const data=await response.json().catch(()=>({error:'UNAVAILABLE'}));
+ if(!response.ok)throw Error(data.error || 'UNAVAILABLE');
+ if(typeof data.signedUrl!=='string')throw Error('UNAVAILABLE');
+ if(!mounted.current)return;
  await conversation.startSession({signedUrl:data.signedUrl,connectionType:'websocket',overrides:{agent:{language:lang,firstMessage:t({en:'Hello, I am AADHI TI’s AI assistant. What would you like help with today?',mr:'नमस्कार, मी आधी तीची एआय सहाय्यक आहे. आज तुम्हाला कशासाठी मदत हवी आहे?',hi:'नमस्ते, मैं आधी ती की एआई सहायिका हूँ। आज आपको किस बारे में मदद चाहिए?'})}}});
  if(!mounted.current)await end.current();
- }catch{setError(t({en:'Unable to start. Allow microphone access and try again.',mr:'कॉल सुरू झाला नाही. मायक्रोफोनची परवानगी देऊन पुन्हा प्रयत्न करा.',hi:'कॉल शुरू नहीं हुआ। माइक्रोफोन की अनुमति देकर फिर कोशिश करें।'}));}finally{pending.current=false;if(mounted.current)setBusy(false);}}
+ }catch(cause){if(mounted.current)setError(t(callErrorMessage(cause)));}finally{pending.current=false;if(mounted.current)setBusy(false);}}
  const active=conversation.status==='connected';
  useEffect(()=>{if(!active)return;setSeconds(0);const began=Date.now();const timer=setInterval(()=>setSeconds(Math.floor((Date.now()-began)/1000)),1000);return()=>clearInterval(timer);},[active]);
  const connecting=busy||conversation.status==='connecting';
@@ -38,7 +43,7 @@ function CallAditi(){
  <p className="mt-3 text-sm leading-relaxed text-kokum-200">{t({mr: "‘आधी ती’शी मराठी, हिंदी किंवा इंग्रजीमध्ये बोला. हे फक्त AI द्वारे  मार्गदर्शन आहे; लोकेशन ट्रॅकिंग किंवा आपत्कालीन मदत पाठवण्याची सुविधा उपलब्ध नाही.",en: "Speak with AADHI TI in Marathi, Hindi or English. This is AI guidance only; location tracking and emergency dispatch are not available.",hi: "‘आधी ती’ से मराठी, हिंदी या अंग्रेज़ी में बात करें। यह केवल AI मार्गदर्शन है; लोकेशन ट्रैक करने या आपातकालीन मदद भेजने की सुविधा उपलब्ध नहीं है।",})}</p>
  <p className="mt-5 font-mono text-2xl tabular-nums text-white/90">{active?`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`:'— : —'}</p>
  <p role="status" className="mt-2 min-h-6 text-sm text-pink-100">{status}</p>
- {error&&<p role="alert" className="mt-4 rounded-xl bg-white/10 p-3 text-sm text-pink-100">{error}</p>}
+ {error&&<div role="alert" className="mt-4 rounded-xl bg-white/10 p-3 text-sm text-pink-100"><p>{error}</p><a href="/chat" className="mt-2 inline-flex min-h-11 items-center underline">{t({en:"Use text chat",mr:"मजकूर चॅट वापरा",hi:"टेक्स्ट चैट इस्तेमाल करें"})}</a></div>}
  <div className="mt-auto flex justify-center gap-10 pt-9 pb-6">
  {active&&<div className="flex flex-col items-center gap-3"><button aria-pressed={muted} aria-label={t({en:muted?'Unmute microphone':'Mute microphone',mr:muted?'मायक्रोफोन सुरू करा':'मायक्रोफोन बंद करा',hi:muted?'माइक्रोफोन चालू करें':'माइक्रोफोन बंद करें'})} onClick={()=>conversation.setMuted(!muted)} className={`grid size-16 place-items-center rounded-full transition ${muted?'bg-white text-kokum-900':'bg-white/15 text-white hover:bg-white/25'}`}>{muted?<MicOff size={25}/>:<Mic size={25}/>}</button><span className="text-xs text-kokum-100">{t({en:muted?'Unmute':'Mute',mr:muted?'आवाज सुरू':'मूक करा',hi:muted?'आवाज़ चालू':'म्यूट'})}</span></div>}
  <div className="flex flex-col items-center gap-3"><button onClick={active?()=>void conversation.endSession():start} disabled={!active&&(connecting||conversation.status!=='disconnected')} aria-label={t({en:active?'End call':'Start call',mr:active?'कॉल बंद करा':'कॉल सुरू करा',hi:active?'कॉल बंद करें':'कॉल शुरू करें'})} className={`grid size-16 place-items-center rounded-full shadow-lg transition active:scale-95 disabled:opacity-50 ${active?'bg-red-600 hover:bg-red-500':'bg-emerald-600 hover:bg-emerald-500'}`}>{active?<PhoneOff size={27}/>:<Phone size={27}/>}</button><span className="text-xs text-kokum-100">{t({en:active?'End call':'Start call',mr:active?'कॉल बंद करा':'कॉल सुरू करा',hi:active?'कॉल बंद करें':'कॉल शुरू करें'})}</span></div>
