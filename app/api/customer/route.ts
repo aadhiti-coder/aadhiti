@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { currentSession } from '@/lib/server/auth';
-import { customerCollection, mongoConfigured } from '@/lib/server/mongo';
+import { customerCollection, mongoConfigured, mongoDb } from '@/lib/server/mongo';
 import { parseCustomerProfile, parseSavedTurn } from '@/lib/customerValidation';
 import { rateLimited } from '@/lib/server/rateLimit';
 export const runtime='nodejs';
@@ -39,7 +39,7 @@ export async function POST(req:Request){
 }
 export async function DELETE(req:Request){
  const denied=await guard(req);if(denied)return denied;
- try{const id=await identity();if(id){if(!mongoConfigured())return json({error:'Database unavailable; deletion not completed'},503);await(await customerCollection()).deleteOne({_id:id});}
+ try{const id=await identity();if(id){if(!mongoConfigured())return json({error:'Database unavailable; deletion not completed'},503);await(await customerCollection()).deleteOne({_id:id});await(await mongoDb()).collection<{_id:string}>('account_links').deleteOne({_id:id});await(await mongoDb()).collection<{_id:string}>('account_link_codes').deleteOne({_id:id});await(await mongoDb()).collection('operation_calls').updateMany({customerId:id},{$set:{transcriptConsent:false,transcript:[]},$unset:{summary:1}});await(await mongoDb()).collection<{_id:string;contact:unknown}>('users').updateOne({_id:id},{$set:{contact:null}});}
  (await cookies()).delete(COOKIE);return json({deleted:true});
  }catch{return json({error:'Deletion failed. Please try again.'},503);}
 }

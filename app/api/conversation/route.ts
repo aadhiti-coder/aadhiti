@@ -1,4 +1,5 @@
-import { requireAuth, sameOrigin } from '@/lib/server/auth';
+import {createCall} from '@/lib/server/operations';
+import { requireAuth, sameOrigin, currentSession } from '@/lib/server/auth';
 import { rateLimited } from '@/lib/server/rateLimit';
 export async function POST(req: Request) {
  if(!sameOrigin(req))return Response.json({error:'ORIGIN'},{status:403});
@@ -6,6 +7,8 @@ export async function POST(req: Request) {
  if(await rateLimited(req,'eleven-conversation',5))return Response.json({error:'LIMIT'},{status:429});
  const key=process.env.ELEVENLABS_API_KEY,agent=process.env.ELEVENLABS_AGENT_ID;
  if(!key||!agent)return Response.json({error:'SETUP_REQUIRED'},{status:503});
+ let transcriptConsent=false;
+ try{const raw=await req.text();if(raw.length>200)throw Error();transcriptConsent=raw?JSON.parse(raw).transcriptConsent===true:false;}catch{return Response.json({error:'INVALID'},{status:400});}
  try {
  const res=await fetch(`https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agent)}`,{headers:{'xi-api-key':key},cache:'no-store',signal:AbortSignal.timeout(15000)});
  if(!res.ok){
@@ -15,6 +18,7 @@ export async function POST(req: Request) {
  }
  const data=await res.json();
  if(typeof data.signed_url!=='string')throw Error();
- return Response.json({signedUrl:data.signed_url},{headers:{'Cache-Control':'no-store'}});
+ const session=await currentSession();const activityId=session?await createCall(session.customerId,transcriptConsent):null;
+ return Response.json({signedUrl:data.signed_url,activityId},{headers:{'Cache-Control':'no-store'}});
  }catch(cause){console.error('ElevenLabs session request failed', {code:cause instanceof Error ? cause.name : 'UnknownError'});return Response.json({error:'UNAVAILABLE'},{status:503});}
 }

@@ -46,3 +46,18 @@ test('OTP requests for different phone numbers do not share a global IP quota',a
  const {auth,docs}=fixture();for(let i=0;i<12;i++)assert.equal((await auth.startOtp('9198765432'+String(i).padStart(2,'0'),async()=>true)).status,200);
  assert.ok([...docs.get('auth_limits').keys()].every(k=>!k.startsWith('ip:')));
 });
+
+test('Contact opt-in is bound to the verified OTP and can be withdrawn on a later sign-in',async()=>{
+ const {auth,docs}=fixture();let code;
+ assert.equal((await auth.startOtp('919876543210',async()=>true,{name:'',consent:true})).status,400);
+ await auth.startOtp('919876543210',async(p,c)=>{code=c;return true;},{name:' Test Person ',consent:true});
+ assert.equal(docs.get('users').size,0);
+ assert.equal(await auth.verifyOtp(code==='111111'?'222222':'111111'),false);
+ assert.equal(docs.get('users').size,0);
+ assert.equal(await auth.verifyOtp(code),true);
+ const user=[...docs.get('users').values()][0];
+ assert.equal(user.contact.name,'Test Person');assert.equal(user.contact.phone,'+919876543210');assert.equal(user.contact.version,1);assert.ok(user.contact.consentedAt);
+ await auth.signOut();for(const [key,d] of docs.get('auth_limits'))if(key.startsWith('cooldown:'))d.expiresAt=new Date(0);
+ await auth.startOtp('919876543210',async(p,c)=>{code=c;return true;});
+ assert.equal(await auth.verifyOtp(code),true);assert.equal(user.contact,null);assert.equal(docs.get('users').size,1);
+});

@@ -1,7 +1,7 @@
 # AADHI TI AI — तिच्या प्रत्येक प्रश्नासाठी
 
 A Women's Information & Support Assistant for Shrivardhan, in **Marathi, English and Hindi**.
-Next.js 15 (App Router) + Tailwind CSS v4. All bot logic is a local mock — no backend, no data leaves the browser.
+Next.js 15 (App Router) + Tailwind CSS v4. Server routes provide AI, voice, verified login and WhatsApp integration; saved information is governed by the app’s consent settings.
 
 ## Pages
 
@@ -22,7 +22,7 @@ Next.js 15 (App Router) + Tailwind CSS v4. All bot logic is a local mock — no 
 - `safety.ts`, `rights.ts` (+ wellbeing), `health.ts` (+ family), `growth.ts` (career + income), `girls.ts`
 - `index.ts` — the 8 adult and 8 girl categories, and the free-text matcher (`understand()`), which handles Devanagari, romanised Marathi/Hindi and everyday phrasing
 
-To go live, replace `understand()` with an LLM call that returns a topic id (or generates an answer in the same three-step shape), keeping the escalation rules.
+The knowledge base grounds AI answers; fixed safety responses and escalation rules remain separate.
 
 ## Run
 
@@ -32,3 +32,7 @@ npm run dev
 ```
 
 Open http://localhost:3000
+
+## Repositories
+
+The public website stays here. Staff UI and admin API are independent sibling repositories; see [repository setup](docs/admin-dashboard.md).

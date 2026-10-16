@@ -14,7 +14,7 @@ process.env.WATI_WEBHOOK_SECRET='test-secret';process.env.WATI_REMINDER_KEY='ab'
 
 test('WhatsApp preferences, guided journeys, checklists, feedback and human acceptance',async()=>{
  let jobs=[],sent=[],audio=0,serial=0,failAudio=false;
- const load=loader({'next/server':{after:fn=>jobs.push(fn)},'@/lib/server/wati':{
+ const load=loader({'@/lib/server/operations':{supportControl:async()=>null,supportRequest:async()=>{},supportMessage:async()=>{},supportStatus:async()=>{}},'@/lib/server/transcripts':{voiceConsent:async()=>false,setVoiceConsent:async()=>{},saveVoiceTurn:async()=>{}},'@/lib/server/waSupport':{supportAvailable:async()=>true},'@/lib/server/delivery':{saveDeliveryReceipt:async()=>false},'@/lib/server/accountLink':{acceptLink:async()=>false},'next/server':{after:fn=>jobs.push(fn)},'@/lib/server/wati':{
  watiConfigured:()=>true,sendText:async(t,text)=>{sent.push(text);return true;},sendInteractive:async(t,m)=>{sent.push(m);return true;},getMedia:async()=>({data:new ArrayBuffer(4),type:'audio/ogg'}),sendFile:async()=>{audio++;return true;},sendFileUrl:async()=>true,handoffConfigured:()=>true,handToHuman:async()=>true},
  '@/lib/server/transcribe':{transcribe:async()=> 'मला शिवणकाम शिकायचे आहे'},'@/lib/server/tts':{synthesize:async()=>failAudio?null:new ArrayBuffer(4)},
  '@/lib/server/answer':{answerQuestion:async()=>({understand:'Understood',answer:['Try a local training centre.'],nextStep:'Which skill?',options:[],risk:'P3',lang:'en',helplines:[],source:'Guidance',verify:'',topicId:null})}});

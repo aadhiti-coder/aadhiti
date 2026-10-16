@@ -9,23 +9,28 @@ export default function AditiConversation(){return <ConversationProvider><CallAd
 function CallAditi(){
  const {t,lang}=useLang();const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const [seconds,setSeconds]=useState(0);
+ const [saveTranscript,setSaveTranscript]=useState(false);const saving=useRef(false);const transcriptQueue=useRef(Promise.resolve());
+ const activity=useRef<string|null>(null);
+ const report=(status:string)=>{if(activity.current)void fetch('/api/conversation/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:activity.current,status}),keepalive:true}).catch(()=>{});};
  const pending=useRef(false),mounted=useRef(true);
- const conversation=useConversation({onError:(message)=>{if(mounted.current)setError(t(callErrorMessage(message)));}});
+ const conversation=useConversation({onMessage:(message)=>{const id=activity.current;if(!id||!saving.current||!message.message)return;const payload={id,eventId:`${message.role}:${message.response_id||message.event_id}`,role:message.source==='user'?'user':'agent',text:message.message.slice(0,6000)};transcriptQueue.current=transcriptQueue.current.then(async()=>{try{const res=await fetch('/api/conversation/transcript',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true});if(!res.ok&&mounted.current)setError(t({en:'Some transcript text could not be saved. The call can continue.',mr:'संभाषणाचा काही मजकूर जतन झाला नाही. कॉल सुरू ठेवू शकता.',hi:'बातचीत का कुछ हिस्सा सहेजा नहीं गया। कॉल जारी रख सकते हैं।'}));}catch{}});},onConnect:()=>report('connected'),onDisconnect:()=>report('ended'),onError:(message)=>{report('failed');if(mounted.current)setError(t(callErrorMessage(message)));}});
  const end=useRef(conversation.endSession);end.current=conversation.endSession;
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;void end.current();};},[]);
- async function start(){if(pending.current)return;pending.current=true;setBusy(true);setError('');try{
+ async function start(){if(pending.current)return;pending.current=true;setBusy(true);setError('');activity.current=null;try{
  if(!navigator.mediaDevices?.getUserMedia)throw Error('UNSUPPORTED');
  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});stream.getTracks().forEach(track=>track.stop());
  if(!mounted.current)return;
- const response=await fetch('/api/conversation',{method:'POST',signal:AbortSignal.timeout(20000)});
+ const response=await fetch('/api/conversation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcriptConsent:saveTranscript}),signal:AbortSignal.timeout(20000)});
  if(response.status===401){window.dispatchEvent(new Event('aadhi-auth-required'));throw Error('AUTH_REQUIRED');}
  const data=await response.json().catch(()=>({error:'UNAVAILABLE'}));
  if(!response.ok)throw Error(data.error || 'UNAVAILABLE');
  if(typeof data.signedUrl!=='string')throw Error('UNAVAILABLE');
  if(!mounted.current)return;
+ activity.current=data.activityId;saving.current=saveTranscript;
+ if(saveTranscript&&!data.activityId)setError(t({en:'Transcript saving is unavailable for this call.',mr:'या कॉलचा मजकूर जतन करण्याची सुविधा उपलब्ध नाही.',hi:'इस कॉल का लिखित रूप सहेजना उपलब्ध नहीं है।'}));
  await conversation.startSession({signedUrl:data.signedUrl,connectionType:'websocket',overrides:{agent:{language:lang,firstMessage:t({en:'Hello, I am AADHI TI’s AI assistant. What would you like help with today?',mr:'नमस्कार, मी आधी तीची एआय सहाय्यक आहे. आज तुम्हाला कशासाठी मदत हवी आहे?',hi:'नमस्ते, मैं आधी ती की एआई सहायिका हूँ। आज आपको किस बारे में मदद चाहिए?'})}}});
  if(!mounted.current)await end.current();
- }catch(cause){if(mounted.current)setError(t(callErrorMessage(cause)));}finally{pending.current=false;if(mounted.current)setBusy(false);}}
+ }catch(cause){report('failed');if(mounted.current)setError(t(callErrorMessage(cause)));}finally{pending.current=false;if(mounted.current)setBusy(false);}}
  const active=conversation.status==='connected';
  useEffect(()=>{if(!active)return;setSeconds(0);const began=Date.now();const timer=setInterval(()=>setSeconds(Math.floor((Date.now()-began)/1000)),1000);return()=>clearInterval(timer);},[active]);
  const connecting=busy||conversation.status==='connecting';
@@ -44,13 +49,14 @@ function CallAditi(){
  <p className="mt-5 font-mono text-2xl tabular-nums text-white/90">{active?`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`:'— : —'}</p>
  <p role="status" className="mt-2 min-h-6 text-sm text-pink-100">{status}</p>
  {error&&<div role="alert" className="mt-4 rounded-xl bg-white/10 p-3 text-sm text-pink-100"><p>{error}</p><a href="/chat" className="mt-2 inline-flex min-h-11 items-center underline">{t({en:"Use text chat",mr:"मजकूर चॅट वापरा",hi:"टेक्स्ट चैट इस्तेमाल करें"})}</a></div>}
+ {!active&&!connecting&&<label className="mt-5 flex items-start gap-3 text-left text-xs leading-relaxed text-kokum-100"><input type="checkbox" checked={saveTranscript} onChange={e=>setSaveTranscript(e.target.checked)} className="mt-1 size-5 shrink-0"/>{t({en:'Optional: save this call’s text for 30 days so authorised staff can review it and generate an AI summary with Gemini. No audio recording is saved here. Delete saved text through My saved data.',mr:'ऐच्छिक: अधिकृत कर्मचाऱ्यांना पाहण्यासाठी आणि Gemini द्वारे एआय सारांश तयार करण्यासाठी या कॉलचा मजकूर ३० दिवस जतन करा. येथे ऑडिओ जतन होत नाही. माझी जतन केलेली माहिती विभागातून मजकूर हटवता येईल.',hi:'वैकल्पिक: अधिकृत कर्मचारियों की समीक्षा और Gemini से एआई सारांश के लिए इस कॉल का लिखित रूप ३० दिन सहेजें। यहाँ ऑडियो नहीं सहेजा जाता। मेरी सहेजी जानकारी से लिखित रूप मिटा सकते हैं।'})}</label>}
  <div className="mt-auto flex justify-center gap-10 pt-9 pb-6">
  {active&&<div className="flex flex-col items-center gap-3"><button aria-pressed={muted} aria-label={t({en:muted?'Unmute microphone':'Mute microphone',mr:muted?'मायक्रोफोन सुरू करा':'मायक्रोफोन बंद करा',hi:muted?'माइक्रोफोन चालू करें':'माइक्रोफोन बंद करें'})} onClick={()=>conversation.setMuted(!muted)} className={`grid size-16 place-items-center rounded-full transition ${muted?'bg-white text-kokum-900':'bg-white/15 text-white hover:bg-white/25'}`}>{muted?<MicOff size={25}/>:<Mic size={25}/>}</button><span className="text-xs text-kokum-100">{t({en:muted?'Unmute':'Mute',mr:muted?'आवाज सुरू':'मूक करा',hi:muted?'आवाज़ चालू':'म्यूट'})}</span></div>}
  <div className="flex flex-col items-center gap-3"><button onClick={active?()=>void conversation.endSession():start} disabled={!active&&(connecting||conversation.status!=='disconnected')} aria-label={t({en:active?'End call':'Start call',mr:active?'कॉल बंद करा':'कॉल सुरू करा',hi:active?'कॉल बंद करें':'कॉल शुरू करें'})} className={`grid size-16 place-items-center rounded-full shadow-lg transition active:scale-95 disabled:opacity-50 ${active?'bg-red-600 hover:bg-red-500':'bg-emerald-600 hover:bg-emerald-500'}`}>{active?<PhoneOff size={27}/>:<Phone size={27}/>}</button><span className="text-xs text-kokum-100">{t({en:active?'End call':'Start call',mr:active?'कॉल बंद करा':'कॉल सुरू करा',hi:active?'कॉल बंद करें':'कॉल शुरू करें'})}</span></div>
  </div>
  <div className="border-t border-white/10 pt-4">
  <p className="text-xs leading-relaxed text-kokum-200">{t({en:`An AI conversation, not a call to ${leaderNames.full.en}.`,mr:`हा एआय संवाद आहे, ${leaderNames.full.mr} यांना कॉल नाही.`,hi:`यह एआई बातचीत है, ${leaderNames.full.hi} को कॉल नहीं।`})}</p>
- <p className="mt-3 text-xs leading-relaxed text-kokum-200">{t({en:'Starting the call shares your microphone audio with ElevenLabs to respond. Audio recording is off; transcripts may remain with the provider for one day. End the call at any time.',mr:'कॉल सुरू केल्यावर उत्तर देण्यासाठी तुमचा आवाज ElevenLabs कडे जातो. आवाजाचे रेकॉर्डिंग बंद आहे; संभाषणाचा मजकूर सेवेकडे एक दिवस राहू शकतो. कॉल कधीही बंद करता येतो.',hi:'कॉल शुरू करने पर जवाब देने के लिए आपकी आवाज़ ElevenLabs को भेजी जाती है। आवाज़ की रिकॉर्डिंग बंद है; बातचीत का लिखित रूप सेवा के पास एक दिन रह सकता है। कॉल कभी भी बंद कर सकते हैं।'})}</p>
+ <p className="mt-3 text-xs leading-relaxed text-kokum-200">{t({en:'Starting the call shares your microphone audio with ElevenLabs to respond. Connection status and timestamps are kept for 30 days for support. Audio recording is off; transcripts may remain with the provider for one day. End the call at any time.',mr:'कॉल सुरू केल्यावर उत्तर देण्यासाठी तुमचा आवाज ElevenLabs कडे जातो. मदतीसाठी कॉलची स्थिती आणि वेळ ३० दिवस जतन केली जाते. आवाजाचे रेकॉर्डिंग बंद आहे; संभाषणाचा मजकूर सेवेकडे एक दिवस राहू शकतो. कॉल कधीही बंद करता येतो.',hi:'कॉल शुरू करने पर जवाब देने के लिए आपकी आवाज़ ElevenLabs को भेजी जाती है। सहायता के लिए कॉल की स्थिति और समय ३० दिन रखे जाते हैं। आवाज़ की रिकॉर्डिंग बंद है; बातचीत का लिखित रूप सेवा के पास एक दिन रह सकता है। कॉल कभी भी बंद कर सकते हैं।'})}</p>
 
  <a href="tel:112" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-white underline underline-offset-4">{t({en:'Emergency? Call 112',mr:'आणीबाणी? 112 वर कॉल करा',hi:'आपातकाल? 112 पर कॉल करें'})}</a>
  </div>

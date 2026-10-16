@@ -22,7 +22,8 @@ test('session endpoint preserves auth and reports provider failures without leak
  const oldKey=process.env.ELEVENLABS_API_KEY, oldAgent=process.env.ELEVENLABS_AGENT_ID;
  let allowed=true,denied=null;
  const {POST}=load('app/api/conversation/route.ts',{
-  '@/lib/server/auth':{sameOrigin:()=>allowed,requireAuth:async()=>denied},
+  '@/lib/server/auth':{sameOrigin:()=>allowed,requireAuth:async()=>denied,currentSession:async()=>({customerId:'account:test'})},
+  '@/lib/server/operations':{createCall:async()=>null},
   '@/lib/server/rateLimit':{rateLimited:()=>false}
  });
  try {
@@ -37,7 +38,7 @@ test('session endpoint preserves auth and reports provider failures without leak
   }
   global.fetch=async()=>{throw new DOMException('timeout','TimeoutError');};assert.equal((await (await POST(new Request('https://example.test'))).json()).error,'UNAVAILABLE');
   global.fetch=async()=>Response.json({signed_url:'wss://example.test/session'});
-  const response=await POST(new Request('https://example.test'));assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),{signedUrl:'wss://example.test/session'});
+  const response=await POST(new Request('https://example.test'));assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),{signedUrl:'wss://example.test/session',activityId:null});
  } finally {
   global.fetch=originalFetch;console.error=originalError;
   if(oldKey===undefined)delete process.env.ELEVENLABS_API_KEY;else process.env.ELEVENLABS_API_KEY=oldKey;

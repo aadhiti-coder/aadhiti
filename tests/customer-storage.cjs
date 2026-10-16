@@ -6,7 +6,7 @@ test('Customer profile strips extra sensitive fields and validates input',()=>{c
 test('Customer routes require origin and explicit consent, scope writes and cap history',async()=>{
  let configured=true,cookie='a'.repeat(64),calls=[];
  const col={findOne:async()=>null,updateOne:async(...args)=>{calls.push(args);return {modifiedCount:1}},deleteOne:async(...args)=>{calls.push(args)}};
- const route=load('app/api/customer/route.ts',{'next/headers':{cookies:async()=>({get:()=>cookie?{value:cookie}:undefined,set:()=>{},delete:()=>{cookie=null}})},'@/lib/server/auth':{currentSession:async()=>cookie?{customerId:'account:'+cookie}:null},'@/lib/server/mongo':{mongoConfigured:()=>configured,customerCollection:async()=>col},'@/lib/customerValidation':validation,'@/lib/server/rateLimit':{rateLimited:()=>false}});
+ const route=load('app/api/customer/route.ts',{'next/headers':{cookies:async()=>({get:()=>cookie?{value:cookie}:undefined,set:()=>{},delete:()=>{cookie=null}})},'@/lib/server/auth':{currentSession:async()=>cookie?{customerId:'account:'+cookie}:null},'@/lib/server/mongo':{mongoConfigured:()=>configured,customerCollection:async()=>col,mongoDb:async()=>({collection:()=>({...col,updateMany:async()=>({})})})},'@/lib/customerValidation':validation,'@/lib/server/rateLimit':{rateLimited:()=>false}});
  const req=(method,data,origin='https://example.test')=>new Request('https://example.test/api/customer',{method,headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(data)});
  assert.equal((await route.PUT(req('PUT',{profile,profileConsent:true,historyConsent:true},'https://attacker.test'))).status,403);
  assert.equal((await route.PUT(req('PUT',{profile,profileConsent:false,historyConsent:true}))).status,400);assert.equal(calls.length,0);

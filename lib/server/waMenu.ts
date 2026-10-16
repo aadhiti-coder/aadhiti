@@ -455,9 +455,9 @@ export function handoffConsentMenu(lang: Lang): ButtonsMenu {
     kind: "buttons",
     body: t3(
       lang,
-      "आधी ती च्या प्रशिक्षित टीममधली एक व्यक्ती तुमचे संदेश वाचून इथेच WhatsApp वर उत्तर देईल. त्यांना तुमचा नंबर आणि हे संभाषण दिसेल.\n\nउत्तर यायला थोडा वेळ लागू शकतो. लगेच बोलायचं असेल तर *181* (महिला हेल्पलाइन, 24 तास, मोफत) वर कॉल करा. धोका असेल तर *112*.\n\nजोडून देऊ का?",
-      "आधी ती की प्रशिक्षित टीम का एक व्यक्ति आपके संदेश पढ़कर यहीं WhatsApp पर जवाब देगा। उन्हें आपका नंबर और यह बातचीत दिखेगी।\n\nजवाब आने में थोड़ा समय लग सकता है। अभी बात करनी हो तो *181* (महिला हेल्पलाइन, 24 घंटे, मुफ़्त) पर कॉल करें। खतरा हो तो *112*।\n\nक्या जोड़ दें?",
-      "A person from AADHI TI's trained team will read your messages and reply here on WhatsApp. They will see your number and this chat.\n\nA reply may take a little time. To talk right now, call *181* (women's helpline, 24 hours, free). In danger? Call *112*.\n\nShall I connect you?",
+      "आधी ती च्या प्रशिक्षित टीममधली एक व्यक्ती तुमचे संदेश वाचून इथेच WhatsApp वर उत्तर देईल. त्यांना तुमचा नंबर आणि हे संभाषण दिसेल. संमतीनंतरचे जास्तीत जास्त १०० सहाय्य संदेश आणि नंबर कर्मचारी डॅशबोर्डमध्ये ३० दिवस जतन होतील. menu लिहिल्यावर नवीन संदेश जतन होणे थांबेल.\n\nउत्तर यायला थोडा वेळ लागू शकतो. लगेच बोलायचं असेल तर *181* (महिला हेल्पलाइन, 24 तास, मोफत) वर कॉल करा. धोका असेल तर *112*.\n\nजोडून देऊ का?",
+      "आधी ती की प्रशिक्षित टीम का एक व्यक्ति आपके संदेश पढ़कर यहीं WhatsApp पर जवाब देगा। उन्हें आपका नंबर और यह बातचीत दिखेगी। सहमति के बाद के अधिकतम १०० सहायता संदेश और नंबर कर्मचारी डैशबोर्ड में ३० दिन रखे जाएँगे। menu लिखने पर नए संदेश सहेजना बंद होगा।\n\nजवाब आने में थोड़ा समय लग सकता है। अभी बात करनी हो तो *181* (महिला हेल्पलाइन, 24 घंटे, मुफ़्त) पर कॉल करें। खतरा हो तो *112*।\n\nक्या जोड़ दें?",
+      "A person from AADHI TI's trained team will read your messages and reply here on WhatsApp. They will see your number and this chat. Up to 100 support messages after consent and your number will be kept in the staff dashboard for 30 days. Type menu to stop saving new messages.\n\nA reply may take a little time. To talk right now, call *181* (women's helpline, 24 hours, free). In danger? Call *112*.\n\nShall I connect you?",
     ),
     buttons: [
       {

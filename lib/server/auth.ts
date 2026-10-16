@@ -8,8 +8,9 @@ export const authConfigured=()=>Boolean(process.env.MONGODB_URI&&process.env.AUT
 export function keyed(value:string){const secret=process.env.AUTH_SECRET;if(!secret||secret.length<32)throw Error('Auth unavailable');return createHmac('sha256',secret).update(value).digest('hex');}
 export function normalizePhone(value:unknown){if(typeof value!=='string')throw Error('phone');let p=value.replace(/[\s()+-]/g,'');if(/^[6-9]\d{9}$/.test(p))p='91'+p;if(!/^[1-9]\d{7,14}$/.test(p))throw Error('phone');return p;}
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
-type Challenge={_id:string;phoneKey:string;last4:string;codeHash:string;attempts:number;ready:boolean;expiresAt:Date};
-type AuthUser={_id:string;last4:string;phoneVerified:true;authMethod:'sms_otp';createdAt:Date;lastLoginAt:Date;loginCount:number};
+type Contact={name:string;phone:string;consentedAt:Date;version:1};
+type Challenge={contact?:Contact|null;_id:string;phoneKey:string;last4:string;codeHash:string;attempts:number;ready:boolean;expiresAt:Date};
+type AuthUser={contact?:Contact|null;_id:string;last4:string;phoneVerified:true;authMethod:'sms_otp';createdAt:Date;lastLoginAt:Date;loginCount:number};
 type Session={_id:string;customerId:string;last4:string;expiresAt:Date};
 let indexes:Promise<unknown>|undefined;
 async function collections(){const db=await mongoDb();if(!indexes)indexes=Promise.all(['auth_challenges','auth_sessions','auth_limits'].map(n=>db.collection(n).createIndex({expiresAt:1},{expireAfterSeconds:0}))).catch(e=>{indexes=undefined;throw e;});await indexes;return {users:db.collection<AuthUser>('users'),challenges:db.collection<Challenge>('auth_challenges'),sessions:db.collection<Session>('auth_sessions'),limits:db.collection<{_id:string;count:number;expiresAt:Date}>('auth_limits')};}
@@ -25,12 +26,14 @@ async function cooldown(phoneKey:string){
 async function budget(key:string,max:number,seconds:number){
  const {limits}=await collections();const window=Math.floor(Date.now()/(seconds*1000));const doc=await limits.findOneAndUpdate({_id:key+':'+window},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((window+2)*seconds*1000)}},{upsert:true,returnDocument:'after'});return !!doc&&doc.count<=max;
 }
-export async function startOtp(phone:string,send:(phone:string,code:string)=>Promise<boolean>){
+export async function startOtp(phone:string,send:(phone:string,code:string)=>Promise<boolean>,contact?:{name:string;consent:boolean}){
+ const name=contact?.name.trim()??'';
+ if(contact?.consent&&(!name||name.length>80||/[\u0000-\u001f\u007f]/.test(name)))return {status:400,error:'NAME'};
  const phoneKey=keyed('phone:'+phone);
  if(!await budget('phone:'+phoneKey,5,3600)||!await cooldown(phoneKey))return {status:429,error:'LIMIT'};
  const {challenges}=await collections();const id=randomBytes(32).toString('hex');const code=String(randomInt(100000,1000000));
  // Only one active code per phone: replacement invalidates a previous code immediately.
- await challenges.updateOne({_id:phoneKey},{$set:{phoneKey,last4:phone.slice(-4),codeHash:keyed(id+':'+code),attempts:0,ready:false,expiresAt:new Date(Date.now()+5*60*1000)}},{upsert:true});
+ await challenges.updateOne({_id:phoneKey},{$set:{contact:contact?.consent?{name,phone:'+'+phone,consentedAt:new Date(),version:1}:null,phoneKey,last4:phone.slice(-4),codeHash:keyed(id+':'+code),attempts:0,ready:false,expiresAt:new Date(Date.now()+5*60*1000)}},{upsert:true});
  let sent=false;try{sent=await send(phone,code);}catch{}
  if(!sent){await challenges.deleteOne({_id:phoneKey,codeHash:keyed(id+':'+code)});return {status:503,error:'SEND_FAILED'};}
  await challenges.updateOne({_id:phoneKey,codeHash:keyed(id+':'+code)},{$set:{ready:true}});
@@ -49,7 +52,7 @@ export async function verifyOtp(code:string){
  // Durable account directory, independent of optional profile/history consent and session TTL.
  const now=new Date();
  await users.updateOne({_id:'account:'+phoneKey},{
-  $set:{last4:consumed.last4,phoneVerified:true,authMethod:'sms_otp',lastLoginAt:now},
+  $set:{contact:consumed.contact??null,last4:consumed.last4,phoneVerified:true,authMethod:'sms_otp',lastLoginAt:now},
   $setOnInsert:{createdAt:now},$inc:{loginCount:1},
  },{upsert:true});
  const token=randomBytes(32).toString('hex'),jar=await cookies();const old=jar.get(SESSION_COOKIE)?.value;

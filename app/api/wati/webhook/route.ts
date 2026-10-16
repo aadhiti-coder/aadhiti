@@ -1,3 +1,7 @@
+import {acceptLink} from '@/lib/server/accountLink';
+import {saveDeliveryReceipt} from '@/lib/server/delivery';
+import {voiceConsent,setVoiceConsent,saveVoiceTurn} from '@/lib/server/transcripts';
+import {supportRequest,supportStatus,supportMessage,supportControl} from '@/lib/server/operations';
 import { aboutIntent, aboutAnswer } from "@/lib/about";
 // WhatsApp via WATI: receives "Message Received" webhooks and replies with AADHI TI's answers.
 // Set this URL in WATI → Webhooks (event: Message Received):
@@ -74,6 +78,7 @@ export const maxDuration = 120;
 type WatiMessage = {
   id?: string;
   whatsappMessageId?: string;
+  localMessageId?: string;
   conversationId?: string;
   waId?: string;
   text?: string | null;
@@ -156,6 +161,12 @@ export async function POST(req: Request) {
     return ok("ignored"); // malformed: acknowledge so WATI doesn't retry it
   }
 
+  try { await saveDeliveryReceipt(msg as unknown as Record<string,unknown>); } catch { return Response.json({error:'Receipt storage unavailable'},{status:503}); }
+
+  if(msg.eventType==='sessionMessageSent_v2'&&msg.owner===true&&msg.operatorEmail&&msg.waId&&msg.text){
+    const state=await getJSON<UserState>(`wati:user:${userKey(msg.waId)}`).catch(()=>null);
+    if(state?.handoffStatus&&(state.humanUntil??0)>Date.now())await supportMessage(userKey(msg.waId),msg.id||msg.whatsappMessageId||createHash('sha256').update(msg.text).digest('hex'),'staff',msg.text,[msg.id,msg.localMessageId,msg.whatsappMessageId].filter((v):v is string=>typeof v==='string'&&v.length<512));
+  }
   // Explicit staff acceptance, never inferred from assignment or a bot message.
   if (msg.eventType === "sessionMessageSent_v2" && msg.owner === true && msg.waId && ["#accept", "#on-the-way"].includes(msg.text?.trim() ?? "")) {
     const staff=(process.env.WATI_SUPPORT_OPERATOR_EMAILS??"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
@@ -165,6 +176,7 @@ export async function POST(req: Request) {
       if (msg.text?.trim() === "#on-the-way") {
         // Only a human operator can confirm physical assistance, after accepting this request.
         if (state?.handoffStatus !== "accepted" || (state.humanUntil ?? 0) <= Date.now()) return;
+        await supportStatus(userKey(msg.waId!),"on-the-way");
         await setJSON(key, {...state, handoffStatus: "on-the-way", humanUntil: Date.now()+DAY*1000}, DAY);
         await sendText(msg.conversationId || msg.waId!, say(state.lang ?? "mr",
           "Your support person has confirmed that staff are on the way to help you. Stay in touch with them here for arrival details. If you are in immediate danger, call 112 now; do not wait for their arrival.",
@@ -173,6 +185,7 @@ export async function POST(req: Request) {
         return;
       }
       if(state?.handoffStatus!=="pending")return;
+      await supportStatus(userKey(msg.waId!),"accepted");
       await setJSON(key,{...state,handoffStatus:"accepted",humanUntil:Date.now()+DAY*1000},DAY);
       const l=state.lang??"mr";
       await sendText(msg.conversationId||msg.waId!,say(l,"A support person has accepted your request and is handling this chat. Type menu to return to the bot.","सहाय्यक व्यक्तीने तुमची विनंती स्वीकारली आहे आणि हा संवाद हाताळत आहे. बॉटसाठी menu लिहा.","सहायक ने आपका अनुरोध स्वीकार कर लिया है और यह चैट संभाल रहा है। बॉट के लिए menu लिखें।"));
@@ -237,6 +250,8 @@ async function handle(msg: WatiMessage) {
   const waId = msg.waId!;
   const target = msg.conversationId || waId;
   const key = userKey(waId);
+  const linkCommand=msg.text?.trim().match(/^link\s+([a-f0-9]{32})$/i);
+  if(linkCommand){const linked=await acceptLink(waId,key,linkCommand[1].toLowerCase());await sendText(target,linked?'Website and WhatsApp linked for 30 days. Only future consented records will be combined for support staff. Unlink any time in My saved data. / वेबसाइट आणि WhatsApp जोडले. / वेबसाइट और WhatsApp जुड़ गए।':'Link expired or phone does not match. Generate a new code in My saved data using the same phone number. / त्याच नंबरने पुन्हा प्रयत्न करा. / उसी नंबर से फिर कोशिश करें।');return;}
   const saved = await getJSON<UserState>(`wati:user:${key}`).catch(() => null);
   const state: UserState = {
     mode: saved?.mode,
@@ -249,6 +264,15 @@ async function handle(msg: WatiMessage) {
     finder: saved?.finder ?? null,
     humanUntil: saved?.humanUntil ?? 0,
   };
+  // Mongo is shared with the support desk; dashboard ownership overrides stale Redis state.
+  const control=await supportControl(key);
+  if(control){
+    if(['resolved','returned-to-bot'].includes(control.status)){state.humanUntil=0;state.handoffStatus=undefined;}
+    else if(control.pauseUntil&&new Date(control.pauseUntil).getTime()>Date.now()){
+      state.humanUntil=new Date(control.pauseUntil).getTime();
+      state.handoffStatus=control.status==='pending'?'pending':control.status==='on-the-way'?'on-the-way':'accepted';
+    }
+  }
   const prefs = await getJSON<{mode:ReplyMode;lang:Lang}>(`wati:preferences:${key}`);
   state.mode = prefs?.mode ?? state.mode;
   state.lang = state.lang ?? prefs?.lang ?? null;
@@ -258,6 +282,7 @@ async function handle(msg: WatiMessage) {
     return setJSON(`wati:user:${key}`, state, DAY).catch(() => {});
   };
 
+  if(state.handoffStatus&&(state.humanUntil??0)>Date.now())await supportMessage(key,msg.id||msg.whatsappMessageId||createHash('sha256').update(msg.text||msg.type||'message').digest('hex'),'incoming',msg.type==='location'?'[Location shared in WATI — open WATI to view]':msg.text||`[${msg.type||'media'} message — open WATI to view]`);
   // Sends a menu as WhatsApp buttons/list, or numbered text if interactive messages fail; remembers what was offered.
   const offer = async (
     menu: Menu,
@@ -281,6 +306,11 @@ async function handle(msg: WatiMessage) {
     if (audio) await sendFile(target, audio, "aadhi-ti-welcome.mp3", "audio/mpeg").catch(() => false);
   };
 
+  const command=msg.text?.trim().toLowerCase();
+  if(command==='save voice'||command==='stop saving voice'){
+    const enabled=command==='save voice';await setVoiceConsent(key,enabled);
+    await sendText(target,say(uiLang,enabled?'Voice transcript saving is on for future voice notes. Type stop saving voice to delete saved voice transcripts and stop saving.':'Saved voice transcripts and summaries deleted; saving is off.',enabled?'पुढील व्हॉइस संदेशांचा मजकूर जतन होईल. तो हटवण्यासाठी आणि जतन करणे थांबवण्यासाठी stop saving voice लिहा.':'जतन केलेले व्हॉइस मजकूर आणि सारांश हटवले. जतन करणे बंद आहे.',enabled?'अगले वॉइस संदेशों का लिखित रूप सहेजा जाएगा। मिटाने और बंद करने के लिए stop saving voice लिखें।':'सहेजे वॉइस लिखित रूप और सारांश मिट गए। सहेजना बंद है.'));return;
+  }
   // Native location stays in the WATI conversation for staff; never send coordinates to AI.
   if (msg.type === "location") {
     const active = Boolean(state.handoffStatus && (state.humanUntil ?? 0) > Date.now());
@@ -295,7 +325,9 @@ async function handle(msg: WatiMessage) {
   }
 
   // ---- what did she say? (typed, tapped, or a voice note) ----
+  if((state.humanUntil??0)>Date.now()&&['voice','audio','image','video','document'].includes(msg.type??''))return;
   const isVoice = msg.type === "voice" || msg.type === "audio";
+  const voiceId=msg.id||msg.whatsappMessageId||createHash('sha256').update(key+Date.now()).digest('hex');
   let text: string;
   if (isVoice) {
     const media = await getMedia([msg.id, msg.whatsappMessageId]);
@@ -305,6 +337,9 @@ async function handle(msg: WatiMessage) {
       return;
     }
     text = heard;
+    if(await voiceConsent(key))await saveVoiceTurn(key,voiceId,'user',heard).catch(()=>{});
+    else if(await setOnce(`wati:voice-notice:${key}`,86400))await sendText(target,say(uiLang,'Optional: to save future voice-note text and bot answers for staff review and AI summaries for 30 days, type save voice. You can keep using voice without saving. Type stop saving voice to delete them later.','ऐच्छिक: पुढील व्हॉइस संदेशांचा मजकूर आणि बॉटची उत्तरे कर्मचाऱ्यांच्या पुनरावलोकनासाठी व एआय सारांशासाठी ३० दिवस जतन करण्यासाठी save voice लिहा. जतन न करताही व्हॉइस वापरू शकता. नंतर हटवण्यासाठी stop saving voice लिहा.','वैकल्पिक: अगले वॉइस संदेशों का लिखित रूप और बॉट के जवाब कर्मचारियों की समीक्षा और एआई सारांश के लिए ३० दिन सहेजने हेतु save voice लिखें। बिना सहेजे भी वॉइस इस्तेमाल कर सकते हैं। बाद में मिटाने के लिए stop saving voice लिखें।'));
+
   } else {
     const raw =
       msg.type === "text"
@@ -327,6 +362,7 @@ async function handle(msg: WatiMessage) {
 
   // Reply directly, without echoing the voice-note transcript.
   const reply = async (body: string, speak: string[], lang: Lang) => {
+    if(isVoice)await saveVoiceTurn(key,voiceId,'agent',body).catch(()=>{});
     const mode = state.mode ?? (isVoice ? "both" : "text");
     if(mode !== "audio") await sendText(
       target,
@@ -381,6 +417,7 @@ async function handle(msg: WatiMessage) {
       return;
     }
     if (MENU_WORDS.test(text)) {
+      await supportStatus(key,"returned-to-bot");
       await sendText(target, handoffResumedMessage(uiLang));
       await save({ humanUntil: 0, handoffStatus: undefined });
       return offer(mainMenu(uiLang), uiLang);
@@ -493,6 +530,7 @@ async function handle(msg: WatiMessage) {
     }
     if (id === "handoff:yes") {
       const done = await handToHuman(target, waId);
+      if(done)await supportRequest(key,waId,target,lang);
       await sendText(
         target,
         done ? `${handoffDoneMessage(lang)}\n\n${shareLocationMessage(lang)}` : handoffUnavailableMessage(lang),
